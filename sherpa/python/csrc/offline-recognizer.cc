@@ -45,6 +45,8 @@ Args:
     frame for any given intersection/composition task. This is advisory, in
     that it will try not to exceed that but may not always succeed. You can use
     a very large number if no constraint is needed.
+  lm_scale:
+    Used only when HLG is not empty. It specifies the scale for HLG.scores.
 )doc";
 
 static constexpr const char *kOfflineRecognizerConfigInitDoc = R"doc(
@@ -110,12 +112,14 @@ static void PybindOfflineCtcDecoderConfig(py::module &m) {  // NOLINT
       .def(py::init([](bool modified = true, const std::string &hlg = "",
                        float search_beam = 20, float output_beam = 8,
                        int32_t min_active_states = 20,
-                       int32_t max_active_states =
-                           10000) -> std::unique_ptr<OfflineCtcDecoderConfig> {
+                       int32_t max_active_states = 10000,
+                       float lm_scale =
+                           1.0f) -> std::unique_ptr<OfflineCtcDecoderConfig> {
              auto ans = std::make_unique<OfflineCtcDecoderConfig>();
 
              ans->modified = modified;
              ans->hlg = hlg;
+             ans->lm_scale = lm_scale;
              ans->output_beam = output_beam;
              ans->search_beam = search_beam;
              ans->output_beam = output_beam;
@@ -127,7 +131,7 @@ static void PybindOfflineCtcDecoderConfig(py::module &m) {  // NOLINT
            py::arg("modified") = true, py::arg("hlg") = "",
            py::arg("search_beam") = 20.0, py::arg("output_beam") = 8.0,
            py::arg("min_active_states") = 20,
-           py::arg("max_active_states") = 10000,
+           py::arg("max_active_states") = 10000, py::arg("lm_scale") = 1.0,
            kOfflineCtcDecoderConfigInitDoc)
       .def_readwrite("modified", &PyClass::modified)
       .def_readwrite("hlg", &PyClass::hlg)
@@ -135,6 +139,7 @@ static void PybindOfflineCtcDecoderConfig(py::module &m) {  // NOLINT
       .def_readwrite("output_beam", &PyClass::output_beam)
       .def_readwrite("min_active_states", &PyClass::min_active_states)
       .def_readwrite("max_active_states", &PyClass::max_active_states)
+      .def_readwrite("lm_scale", &PyClass::lm_scale)
       .def("__str__",
            [](const PyClass &self) -> std::string { return self.ToString(); })
       .def("validate", &PyClass::Validate);
@@ -191,14 +196,16 @@ void PybindOfflineRecognizer(py::module &m) {  // NOLINT
   using PyClass = OfflineRecognizer;
   py::class_<PyClass>(m, "OfflineRecognizer")
       .def(py::init<const OfflineRecognizerConfig &>(), py::arg("config"))
-      .def("create_stream", &PyClass::CreateStream)
-      .def("decode_stream", &PyClass::DecodeStream, py::arg("s"))
+      .def("create_stream", &PyClass::CreateStream,
+           py::call_guard<py::gil_scoped_release>())
+      .def("decode_stream", &PyClass::DecodeStream, py::arg("s"),
+           py::call_guard<py::gil_scoped_release>())
       .def(
           "decode_streams",
           [](PyClass &self, std::vector<OfflineStream *> &ss) {
             self.DecodeStreams(ss.data(), ss.size());
           },
-          py::arg("ss"));
+          py::arg("ss"), py::call_guard<py::gil_scoped_release>());
 }
 
 }  // namespace sherpa
